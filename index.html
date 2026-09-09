@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#111827" />
+  <title>Family Finance</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <div id="toast" class="toast hidden"></div>
+
+  <section id="configScreen" class="center-screen hidden">
+    <div class="auth-card">
+      <h1>Family Finance</h1>
+      <p>This copy is not connected to Supabase yet.</p>
+      <p class="muted">Open <code>config.js</code> and add the Project URL and anon key from your Supabase project.</p>
+    </div>
+  </section>
+
+  <section id="authScreen" class="center-screen hidden">
+    <div class="auth-card">
+      <h1>Family Finance</h1>
+      <p class="muted">Private family budget & transaction tracker</p>
+      <form id="authForm">
+        <label>Email<input id="authEmail" type="email" autocomplete="email" required /></label>
+        <label>Password<input id="authPassword" type="password" autocomplete="current-password" minlength="6" required /></label>
+        <button class="primary" type="submit">Sign in</button>
+      </form>
+      <button id="signUpButton" class="link-button">Create account</button>
+      <p id="authMessage" class="muted small"></p>
+    </div>
+  </section>
+
+  <div id="appShell" class="app-shell hidden">
+    <aside class="sidebar">
+      <div class="brand">Family Finance</div>
+      <nav>
+        <button class="nav-item active" data-view="dashboard">Dashboard</button>
+        <button class="nav-item" data-view="transactions">Transactions</button>
+        <button class="nav-item" data-view="review">Needs review <span id="reviewBadge" class="badge hidden">0</span></button>
+        <button class="nav-item" data-view="budget">Budget</button>
+        <button class="nav-item" data-view="import">Import</button>
+      </nav>
+      <div class="sidebar-footer">
+        <div id="userEmail" class="small muted"></div>
+        <button id="signOutButton" class="link-button">Sign out</button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <h1 id="viewTitle">Dashboard</h1>
+          <p id="viewSubtitle" class="muted"></p>
+        </div>
+        <div id="monthPickerWrap">
+          <input id="monthPicker" type="month" />
+        </div>
+      </header>
+
+      <section id="dashboardView" class="view"></section>
+      <section id="transactionsView" class="view hidden"></section>
+      <section id="reviewView" class="view hidden"></section>
+      <section id="budgetView" class="view hidden"></section>
+      <section id="importView" class="view hidden"></section>
+    </main>
+  </div>
+
+  <dialog id="editDialog">
+    <form method="dialog" id="editForm" class="dialog-form">
+      <h2>Edit classification</h2>
+      <div id="editTransactionSummary" class="transaction-summary"></div>
+      <label>Main category<select id="editMainCategory" required></select></label>
+      <label>Subcategory<select id="editSubcategory" required></select></label>
+      <label class="checkbox-row"><input id="rememberRule" type="checkbox" checked /> Remember this description for future imports</label>
+      <div class="dialog-actions">
+        <button id="cancelEditButton" type="button" class="secondary">Cancel</button>
+        <button id="saveEditButton" type="submit" class="primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="config.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

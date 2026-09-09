@@ -3,11 +3,12 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#111827" />
+  <meta name="theme-color" content="#0b1220" />
   <title>Family Finance</title>
   <link rel="stylesheet" href="styles.css" />
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 </head>
 <body>
   <div id="toast" class="toast hidden"></div>
@@ -16,18 +17,19 @@
     <div class="auth-card">
       <h1>Family Finance</h1>
       <p>This copy is not connected to Supabase yet.</p>
-      <p class="muted">Open <code>config.js</code> and add the Project URL and anon key from your Supabase project.</p>
+      <p class="muted">Keep your existing <code>config.js</code> with your Project URL and publishable key.</p>
     </div>
   </section>
 
   <section id="authScreen" class="center-screen hidden">
     <div class="auth-card">
+      <div class="eyebrow">Private finance workstation</div>
       <h1>Family Finance</h1>
-      <p class="muted">Private family budget & transaction tracker</p>
+      <p class="muted">Cash flow, P&amp;L, net worth and long-term spending intelligence.</p>
       <form id="authForm">
         <label>Email<input id="authEmail" type="email" autocomplete="email" required /></label>
         <label>Password<input id="authPassword" type="password" autocomplete="current-password" minlength="6" required /></label>
-        <button class="primary" type="submit">Sign in</button>
+        <button class="primary wide" type="submit">Sign in</button>
       </form>
       <button id="signUpButton" class="link-button">Create account</button>
       <p id="authMessage" class="muted small"></p>
@@ -36,9 +38,13 @@
 
   <div id="appShell" class="app-shell hidden">
     <aside class="sidebar">
-      <div class="brand">Family Finance</div>
+      <div class="brand"><span class="brand-mark">F</span><span>Family Finance</span></div>
       <nav>
-        <button class="nav-item active" data-view="dashboard">Dashboard</button>
+        <button class="nav-item active" data-view="dashboard">Overview</button>
+        <button class="nav-item" data-view="income">Income Statement</button>
+        <button class="nav-item" data-view="balance">Balance Sheet</button>
+        <button class="nav-item" data-view="explore">Explore</button>
+        <div class="nav-divider"></div>
         <button class="nav-item" data-view="transactions">Transactions</button>
         <button class="nav-item" data-view="review">Needs review <span id="reviewBadge" class="badge hidden">0</span></button>
         <button class="nav-item" data-view="budget">Budget</button>
@@ -53,15 +59,19 @@
     <main class="main">
       <header class="topbar">
         <div>
-          <h1 id="viewTitle">Dashboard</h1>
+          <div class="eyebrow" id="viewEyebrow">Household CFO</div>
+          <h1 id="viewTitle">Overview</h1>
           <p id="viewSubtitle" class="muted"></p>
         </div>
-        <div id="monthPickerWrap">
-          <input id="monthPicker" type="month" />
+        <div id="monthPickerWrap" class="period-control">
+          <span>As of</span><input id="monthPicker" type="month" />
         </div>
       </header>
 
       <section id="dashboardView" class="view"></section>
+      <section id="incomeView" class="view hidden"></section>
+      <section id="balanceView" class="view hidden"></section>
+      <section id="exploreView" class="view hidden"></section>
       <section id="transactionsView" class="view hidden"></section>
       <section id="reviewView" class="view hidden"></section>
       <section id="budgetView" class="view hidden"></section>
@@ -74,11 +84,11 @@
       <h2>Edit classification</h2>
       <div id="editTransactionSummary" class="transaction-summary"></div>
       <label>Main category<select id="editMainCategory" required></select></label>
-      <label>Subcategory<select id="editSubcategory" required></select></label>
+      <label>Subcategory<select id="editSubcategory"></select></label>
       <label class="checkbox-row"><input id="rememberRule" type="checkbox" checked /> Remember this description for future imports</label>
       <div class="dialog-actions">
         <button id="cancelEditButton" type="button" class="secondary">Cancel</button>
-        <button id="saveEditButton" type="submit" class="primary">Save</button>
+        <button type="submit" class="primary">Save</button>
       </div>
     </form>
   </dialog>

@@ -40,15 +40,17 @@
     <aside class="sidebar">
       <div class="brand"><span class="brand-mark">F</span><span>Family Finance</span></div>
       <nav>
-        <button class="nav-item active" data-view="dashboard">Overview</button>
-        <button class="nav-item" data-view="income">Income Statement</button>
-        <button class="nav-item" data-view="balance">Balance Sheet</button>
-        <button class="nav-item" data-view="explore">Explore</button>
+        <button class="nav-item active" data-view="dashboard" data-feature="dashboard">Overview</button>
+        <button class="nav-item" data-view="income" data-feature="income">Income Statement</button>
+        <button class="nav-item" data-view="balance" data-feature="balance">Balance Sheet</button>
+        <button class="nav-item" data-view="explore" data-feature="explore">Explore</button>
         <div class="nav-divider"></div>
-        <button class="nav-item" data-view="transactions">Transactions</button>
-        <button class="nav-item" data-view="review">Needs review <span id="reviewBadge" class="badge hidden">0</span></button>
-        <button class="nav-item" data-view="budget">Budget</button>
-        <button class="nav-item" data-view="import">Import</button>
+        <button class="nav-item" data-view="transactions" data-feature="transactions">Transactions</button>
+        <button class="nav-item" data-view="review" data-feature="review">Needs review <span id="reviewBadge" class="badge hidden">0</span></button>
+        <button class="nav-item" data-view="budget" data-feature="budget">Budget</button>
+        <button class="nav-item" data-view="import" data-feature="import">Import</button>
+        <div class="nav-divider"></div>
+        <button class="nav-item" data-view="settings">Modules</button>
       </nav>
       <div class="sidebar-footer">
         <div id="userEmail" class="small muted"></div>
@@ -76,6 +78,7 @@
       <section id="reviewView" class="view hidden"></section>
       <section id="budgetView" class="view hidden"></section>
       <section id="importView" class="view hidden"></section>
+      <section id="settingsView" class="view hidden"></section>
     </main>
   </div>
 

@@ -22,6 +22,7 @@ const state = {
   exploreHorizon: '36',
   balanceDate: new Date().toISOString().slice(0,10),
   editingId: null,
+  preferences: defaultPreferences(),
 };
 
 const $ = (id) => document.getElementById(id);
@@ -31,7 +32,7 @@ const els = {
   signUpButton: $('signUpButton'), signOutButton: $('signOutButton'), userEmail: $('userEmail'),
   monthPicker: $('monthPicker'), monthPickerWrap: $('monthPickerWrap'), viewTitle: $('viewTitle'), viewSubtitle: $('viewSubtitle'), viewEyebrow: $('viewEyebrow'),
   dashboardView: $('dashboardView'), incomeView: $('incomeView'), balanceView: $('balanceView'), exploreView: $('exploreView'),
-  transactionsView: $('transactionsView'), reviewView: $('reviewView'), budgetView: $('budgetView'), importView: $('importView'),
+  transactionsView: $('transactionsView'), reviewView: $('reviewView'), budgetView: $('budgetView'), importView: $('importView'), settingsView: $('settingsView'),
   reviewBadge: $('reviewBadge'), toast: $('toast'), editDialog: $('editDialog'), editForm: $('editForm'),
   editMainCategory: $('editMainCategory'), editSubcategory: $('editSubcategory'), editTransactionSummary: $('editTransactionSummary'), rememberRule: $('rememberRule')
 };
@@ -43,6 +44,40 @@ const esc = (v='') => String(v ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<'
 const clamp = (x,a,b) => Math.max(a,Math.min(b,x));
 const PALETTE = ['#2563eb','#0f766e','#7c3aed','#d97706','#db2777','#0891b2','#65a30d','#ea580c','#475569','#9333ea','#0284c7','#be123c'];
 const PLOT_LAYOUT = { paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)', font:{family:'Inter, ui-sans-serif, system-ui',color:'#334155'}, margin:{l:45,r:20,t:15,b:42} };
+
+const FEATURE_CATALOG = [
+  {id:'dashboard',label:'Overview',description:'Executive household CFO dashboard'},
+  {id:'income',label:'Income Statement',description:'P&L, cash conversion and period comparisons'},
+  {id:'balance',label:'Balance Sheet',description:'Assets, liabilities, liquidity and net worth'},
+  {id:'explore',label:'Explore',description:'Long- and short-horizon analytics'},
+  {id:'transactions',label:'Transactions',description:'Search and edit transaction history'},
+  {id:'review',label:'Needs review',description:'Classification exception workflow'},
+  {id:'budget',label:'Budget',description:'Plan vs actual and run-rate'},
+  {id:'import',label:'Import',description:'Import new bank/card files'}
+];
+const DASHBOARD_WIDGETS = [
+  {id:'kpis',label:'Executive KPI strip'},
+  {id:'cash_trend',label:'12-month cash conversion trend'},
+  {id:'waterfall',label:'Monthly cash waterfall'},
+  {id:'spend_map',label:'Spending treemap'},
+  {id:'insights',label:'Decision signals'},
+  {id:'categories',label:'Largest categories'},
+  {id:'budget_pulse',label:'Budget pulse'}
+];
+const EXPLORE_WIDGETS = [
+  {id:'kpis',label:'Explore KPI strip'},
+  {id:'trajectory',label:'Rolling spend trajectory'},
+  {id:'category_evolution',label:'Category evolution'},
+  {id:'seasonality',label:'Seasonality heatmap'},
+  {id:'treemap',label:'Category / subcategory treemap'},
+  {id:'merchants',label:'Merchant concentration'},
+  {id:'momentum',label:'Category momentum'},
+  {id:'weekday',label:'Weekday behaviour'},
+  {id:'signals',label:'Interpretation signals'},
+  {id:'annual_pnl',label:'Year-by-year household P&L'}
+];
+function defaultPreferences(){return {feature_flags:Object.fromEntries(FEATURE_CATALOG.map(x=>[x.id,true])),dashboard_widgets:Object.fromEntries(DASHBOARD_WIDGETS.map(x=>[x.id,true])),explore_widgets:Object.fromEntries(EXPLORE_WIDGETS.map(x=>[x.id,true]))};}
+function prefEnabled(group,id){const defaults=defaultPreferences()[group]||{};const bucket=state.preferences?.[group]||{};return bucket[id] ?? defaults[id] ?? true;}
 
 function toast(msg) {
   els.toast.textContent = msg;
@@ -210,14 +245,20 @@ async function authInit(){
 function showAuth(){state.user=null;els.appShell.classList.add('hidden');els.configScreen.classList.add('hidden');els.authScreen.classList.remove('hidden');}
 async function enterApp(user){
   state.user=user;els.authScreen.classList.add('hidden');els.configScreen.classList.add('hidden');els.appShell.classList.remove('hidden');els.userEmail.textContent=user.email||'';
-  await refreshBaseData(); if(!state.month)state.month=await determineLatestMonth(); els.monthPicker.value=state.month; await switchView('dashboard');
+  await refreshBaseData(); if(!state.month)state.month=await determineLatestMonth(); els.monthPicker.value=state.month; const firstView=FEATURE_CATALOG.find(x=>prefEnabled('feature_flags',x.id))?.id||'settings'; await switchView(firstView);
 }
 async function determineLatestMonth(){const {data}=await supabase.from('transactions').select('transaction_date').order('transaction_date',{ascending:false}).limit(1);return data?.[0]?.transaction_date?.slice(0,7)||currentMonth();}
 async function refreshBaseData(){
   const queries=[supabase.from('categories').select('*').order('main_category').order('subcategory'),supabase.from('transactions').select('*',{count:'exact',head:true}).eq('classification_status','needs_review')];
   const [{data:cats},{count}]=await Promise.all(queries);state.categories=cats||[];els.reviewBadge.textContent=count||0;els.reviewBadge.classList.toggle('hidden',!count);
   try{const {data:settings,error}=await supabase.from('category_settings').select('*');if(!error){state.categorySettings=settings||[];state.categorySettingsMap=new Map(state.categorySettings.map(s=>[settingsKey(s.main_category,s.subcategory||''),{treatment:s.pnl_treatment,profile:s.spend_profile,display_name:s.display_name,sort_order:s.sort_order}]));}}catch{}
+  await loadPreferences();applyFeatureVisibility();
 }
+async function loadPreferences(){
+  const defaults=defaultPreferences();
+  try{const {data,error}=await supabase.from('user_preferences').select('*').maybeSingle();if(error)throw error;state.preferences={feature_flags:{...defaults.feature_flags,...(data?.feature_flags||{})},dashboard_widgets:{...defaults.dashboard_widgets,...(data?.dashboard_widgets||{})},explore_widgets:{...defaults.explore_widgets,...(data?.explore_widgets||{})}};}catch(e){console.warn('Preferences unavailable; using defaults.',e?.message||e);state.preferences=defaults;}
+}
+function applyFeatureVisibility(){document.querySelectorAll('[data-feature]').forEach(el=>el.classList.toggle('hidden',!prefEnabled('feature_flags',el.dataset.feature)));}
 async function loadMonthData(){
   const from=monthStart(state.month),to=nextMonthStart(state.month);
   const [{data:tx,error:e1},{data:budgets,error:e2}]=await Promise.all([
@@ -250,6 +291,7 @@ async function switchView(view){
     if(view==='review'){setViewMeta('Needs review','Only transactions the rule engine could not classify',false);await loadReview();renderReview();}
     if(view==='budget'){setViewMeta('Budget','Monthly budget, variance and current run-rate');await Promise.all([loadMonthData(),fetchAllTransactions()]);renderBudget();}
     if(view==='import'){setViewMeta('Import','Bring in history or new bank/card exports',false);renderImport();}
+    if(view==='settings'){setViewMeta('Modules','Choose what the workstation shows and keep the interface focused',false,'Workspace configuration');renderSettings();}
   }catch(e){console.error(e);toast(e.message||'Something went wrong');}
 }
 
@@ -299,25 +341,25 @@ function renderDashboard(){
   const bdate=latestBalanceDate(),bal=bdate?balanceAsOf(bdate):null;const budgetTotal=state.budgets.reduce((a,b)=>a+Number(b.amount),0);const budgetVar=budgetTotal?m.operating-budgetTotal:NaN;
   const cats=categorySpend(monthRows,false);const allSubs=categorySubSpend(monthRows);
   els.dashboardView.innerHTML=`
-    <div class="kpi-grid six">
+    ${prefEnabled('dashboard_widgets','kpis')?`<div class="kpi-grid six">
       ${kpiCard('Core income',fmtSEK.format(m.coreIncome),'Excludes reimbursements and transfers','positive')}
       ${kpiCard('Core cash cost',fmtSEK.format(m.coreOutflow),`${fmtSEK.format(m.operating)} household + ${fmtSEK.format(m.financial)} financial`)}
       ${kpiCard('Core surplus',fmtSEK.format(m.coreSurplus),`${fmtPct(m.savingsRate)} savings conversion`,m.coreSurplus>=0?'positive':'negative')}
       ${kpiCard('TTM core spend',fmtSEK.format(ttm.coreOutflow),`${fmtSEK.format(ttm.coreOutflow/12)} average / month`)}
       ${kpiCard('Extraordinary',fmtSEK.format(m.extraordinary),'Shown outside core run-rate')}
       ${kpiCard('Net worth',bal?fmtSEK.format(bal.netWorth):'—',bdate?`As of ${bdate}`:'Add a balance-sheet snapshot',bal&&bal.netWorth>=0?'positive':'')}
-    </div>
+    </div>`:''}
     <div class="hero-grid">
-      <div class="card chart-card"><div class="card-head"><div><div class="section-kicker">Cash conversion</div><h2>Income, cost and surplus</h2></div><span class="pill">12 months</span></div><div class="chart-wrap tall"><canvas id="cashTrendChart"></canvas></div></div>
-      <div class="card chart-card"><div class="card-head"><div><div class="section-kicker">Current month</div><h2>Cash bridge</h2></div></div><div id="cashWaterfall" class="plot-wrap tall"></div></div>
+      ${prefEnabled('dashboard_widgets','cash_trend')?`<div class="card chart-card"><div class="card-head"><div><div class="section-kicker">Cash conversion</div><h2>Income, cost and surplus</h2></div><span class="pill">12 months</span></div><div class="chart-wrap tall"><canvas id="cashTrendChart"></canvas></div></div>`:''}
+      ${prefEnabled('dashboard_widgets','waterfall')?`<div class="card chart-card"><div class="card-head"><div><div class="section-kicker">Current month</div><h2>Cash bridge</h2></div></div><div id="cashWaterfall" class="plot-wrap tall"></div></div>`:''}
     </div>
     <div class="content-grid equal">
-      <div class="card"><div class="card-head"><div><div class="section-kicker">Consumption mix</div><h2>Household spending map</h2></div><span class="pill">${esc(monthLabel(state.month))}</span></div><div id="spendTreemap" class="plot-wrap"></div></div>
-      <div class="card"><div class="card-head"><div><div class="section-kicker">Decision signals</div><h2>What deserves attention</h2></div></div>${insightHtml(insights)}</div>
+      ${prefEnabled('dashboard_widgets','spend_map')?`<div class="card"><div class="card-head"><div><div class="section-kicker">Consumption mix</div><h2>Household spending map</h2></div><span class="pill">${esc(monthLabel(state.month))}</span></div><div id="spendTreemap" class="plot-wrap"></div></div>`:''}
+      ${prefEnabled('dashboard_widgets','insights')?`<div class="card"><div class="card-head"><div><div class="section-kicker">Decision signals</div><h2>What deserves attention</h2></div></div>${insightHtml(insights)}</div>`:''}
     </div>
     <div class="content-grid equal">
-      <div class="card"><h2>Largest categories</h2><div class="category-list">${cats.slice(0,10).map(([c,v])=>{const max=cats[0]?.[1]||1;return `<div class="category-item"><div><strong>${esc(c.replaceAll('_',' '))}</strong><div class="bar"><div style="width:${Math.max(2,v/max*100)}%"></div></div></div><div>${fmtSEK.format(v)}</div><div class="muted">${m.operating?Math.round(v/m.operating*100):0}%</div></div>`;}).join('')||'<div class="empty">No operating expenses.</div>'}</div></div>
-      <div class="card"><h2>Budget pulse</h2>${budgetTotal?`<div class="mini-metric"><span>Operating spend</span><strong>${fmtSEK.format(m.operating)}</strong></div><div class="mini-metric"><span>Budget</span><strong>${fmtSEK.format(budgetTotal)}</strong></div><div class="mini-metric"><span>Variance</span><strong class="${budgetVar>0?'negative':'positive'}">${budgetVar>=0?'+':''}${fmtSEK.format(budgetVar)}</strong></div><div class="progress large"><div style="width:${clamp(m.operating/budgetTotal*100,0,100)}%"></div></div>`:'<div class="empty compact">Set monthly category budgets to add variance tracking here.</div>'}</div>
+      ${prefEnabled('dashboard_widgets','categories')?`<div class="card"><h2>Largest categories</h2><div class="category-list">${cats.slice(0,10).map(([c,v])=>{const max=cats[0]?.[1]||1;return `<div class="category-item"><div><strong>${esc(c.replaceAll('_',' '))}</strong><div class="bar"><div style="width:${Math.max(2,v/max*100)}%"></div></div></div><div>${fmtSEK.format(v)}</div><div class="muted">${m.operating?Math.round(v/m.operating*100):0}%</div></div>`;}).join('')||'<div class="empty">No operating expenses.</div>'}</div></div>`:''}
+      ${prefEnabled('dashboard_widgets','budget_pulse')?`<div class="card"><h2>Budget pulse</h2>${budgetTotal?`<div class="mini-metric"><span>Operating spend</span><strong>${fmtSEK.format(m.operating)}</strong></div><div class="mini-metric"><span>Budget</span><strong>${fmtSEK.format(budgetTotal)}</strong></div><div class="mini-metric"><span>Variance</span><strong class="${budgetVar>0?'negative':'positive'}">${budgetVar>=0?'+':''}${fmtSEK.format(budgetVar)}</strong></div><div class="progress large"><div style="width:${clamp(m.operating/budgetTotal*100,0,100)}%"></div></div>`:'<div class="empty compact">Set monthly category budgets to add variance tracking here.</div>'}</div>`:''}
     </div>`;
 
   chart('cashTrendChart',{type:'line',data:{labels:series.map(x=>monthLabel(x.month)),datasets:[
@@ -432,28 +474,28 @@ function renderExplore(){
   const last3=monthsBack(state.month,3),prior12={start:addMonths(last3.start,-12),end:last3.start};const c3=new Map(categorySpend(rowsBetween(all,last3.start,last3.end))),p12=new Map(categorySpend(rowsBetween(all,prior12.start,prior12.end)));const momentum=[...new Set([...c3.keys(),...p12.keys()])].map(k=>{const cur=(c3.get(k)||0)/3,base=(p12.get(k)||0)/12;return [k,cur,base,pctChange(cur,base),cur-base];}).filter(x=>x[1]>500||x[2]>500).sort((a,b)=>Math.abs(b[4])-Math.abs(a[4])).slice(0,12);
   els.exploreView.innerHTML=`
     <div class="toolbar"><div class="segmented">${[['3','3m'],['12','1y'],['36','3y'],['60','5y'],['all','All']].map(([k,l])=>`<button data-horizon="${k}" class="${state.exploreHorizon===k?'active':''}">${l}</button>`).join('')}</div><span class="toolbar-note">${esc(b.start)} → ${esc(addMonths(b.end,-1))}</span></div>
-    <div class="kpi-grid five">
+    ${prefEnabled('explore_widgets','kpis')?`<div class="kpi-grid five">
       ${kpiCard('Period core spend',fmtSEK.format(sum(series,x=>x.coreOutflow)),`${series.length} months analysed`)}
       ${kpiCard('Average / month',fmtSEK.format(series.length?sum(series,x=>x.coreOutflow)/series.length:0),'Core household + financial')}
       ${kpiCard('Top 5 merchants',fmtPct(totalSpend?sum(merchantTop.slice(0,5),x=>x[1])/totalSpend:NaN),'Share of analysed core spend')}
       ${kpiCard('Largest category',cats[0]?cats[0][0].replaceAll('_',' '):'—',cats[0]?`${fmtSEK.format(cats[0][1])} / ${fmtPct(cats[0][1]/totalSpend)}`:'')}
       ${kpiCard('Extraordinary',fmtSEK.format(summarize(rows).extraordinary),'Excluded from core trends')}
-    </div>
-    <div class="card"><div class="card-head"><div><div class="section-kicker">Run-rate</div><h2>Core spending trajectory</h2></div></div><div class="chart-wrap tall"><canvas id="spendTrajectoryChart"></canvas></div></div>
+    </div>`:''}
+    ${prefEnabled('explore_widgets','trajectory')?`<div class="card"><div class="card-head"><div><div class="section-kicker">Run-rate</div><h2>Core spending trajectory</h2></div></div><div class="chart-wrap tall"><canvas id="spendTrajectoryChart"></canvas></div></div>`:''}
     <div class="hero-grid">
-      <div class="card"><div class="card-head"><div><div class="section-kicker">Composition</div><h2>Category evolution</h2></div></div><div class="chart-wrap tall"><canvas id="categoryStackChart"></canvas></div></div>
-      <div class="card"><div class="card-head"><div><div class="section-kicker">Seasonality</div><h2>Monthly spending heatmap</h2></div></div><div id="seasonalityHeatmap" class="plot-wrap tall"></div></div>
+      ${prefEnabled('explore_widgets','category_evolution')?`<div class="card"><div class="card-head"><div><div class="section-kicker">Composition</div><h2>Category evolution</h2></div></div><div class="chart-wrap tall"><canvas id="categoryStackChart"></canvas></div></div>`:''}
+      ${prefEnabled('explore_widgets','seasonality')?`<div class="card"><div class="card-head"><div><div class="section-kicker">Seasonality</div><h2>Monthly spending heatmap</h2></div></div><div id="seasonalityHeatmap" class="plot-wrap tall"></div></div>`:''}
     </div>
     <div class="content-grid equal">
-      <div class="card"><div class="section-kicker">Drill-down</div><h2>Category / subcategory map</h2><div id="exploreTreemap" class="plot-wrap"></div></div>
-      <div class="card"><div class="section-kicker">Concentration</div><h2>Largest merchant patterns</h2><div class="chart-wrap"><canvas id="merchantChart"></canvas></div></div>
+      ${prefEnabled('explore_widgets','treemap')?`<div class="card"><div class="section-kicker">Drill-down</div><h2>Category / subcategory map</h2><div id="exploreTreemap" class="plot-wrap"></div></div>`:''}
+      ${prefEnabled('explore_widgets','merchants')?`<div class="card"><div class="section-kicker">Concentration</div><h2>Largest merchant patterns</h2><div class="chart-wrap"><canvas id="merchantChart"></canvas></div></div>`:''}
     </div>
     <div class="triple-grid">
-      <div class="card"><div class="section-kicker">Momentum</div><h2>What is accelerating?</h2><div class="change-list">${momentum.map(([k,cur,base,ch])=>`<div class="change-row"><strong>${esc(k.replaceAll('_',' '))}</strong><span>${fmtSEK.format(cur)}/m</span><span class="muted">vs ${fmtSEK.format(base)}</span><span class="${ch>0?'negative':'positive'}">${Number.isFinite(ch)?`${ch>=0?'+':''}${fmtPct(ch)}`:'—'}</span></div>`).join('')||'<div class="empty compact">Not enough history.</div>'}</div></div>
-      <div class="card"><div class="section-kicker">Behaviour</div><h2>Spend by weekday</h2><div class="chart-wrap short"><canvas id="dowChart"></canvas></div></div>
-      <div class="card"><div class="section-kicker">Signals</div><h2>Interpretation</h2>${insightHtml(insights)}</div>
+      ${prefEnabled('explore_widgets','momentum')?`<div class="card"><div class="section-kicker">Momentum</div><h2>What is accelerating?</h2><div class="change-list">${momentum.map(([k,cur,base,ch])=>`<div class="change-row"><strong>${esc(k.replaceAll('_',' '))}</strong><span>${fmtSEK.format(cur)}/m</span><span class="muted">vs ${fmtSEK.format(base)}</span><span class="${ch>0?'negative':'positive'}">${Number.isFinite(ch)?`${ch>=0?'+':''}${fmtPct(ch)}`:'—'}</span></div>`).join('')||'<div class="empty compact">Not enough history.</div>'}</div></div>`:''}
+      ${prefEnabled('explore_widgets','weekday')?`<div class="card"><div class="section-kicker">Behaviour</div><h2>Spend by weekday</h2><div class="chart-wrap short"><canvas id="dowChart"></canvas></div></div>`:''}
+      ${prefEnabled('explore_widgets','signals')?`<div class="card"><div class="section-kicker">Signals</div><h2>Interpretation</h2>${insightHtml(insights)}</div>`:''}
     </div>
-    <div class="card"><div class="card-head"><div><div class="section-kicker">Long-term record</div><h2>Year-by-year household P&amp;L</h2></div></div><div class="table-wrap"><table><thead><tr><th>Year</th><th class="amount">Core income</th><th class="amount">Household spend</th><th class="amount">Financial cost</th><th class="amount">Extraordinary</th><th class="amount">Core surplus</th><th class="amount">Savings rate</th><th class="amount">Spend growth</th></tr></thead><tbody>${ySumm.map((s,i)=>`<tr><td><strong>${s.y}</strong></td><td class="amount">${fmtSEK.format(s.coreIncome)}</td><td class="amount">${fmtSEK.format(s.operating)}</td><td class="amount">${fmtSEK.format(s.financial)}</td><td class="amount">${fmtSEK.format(s.extraordinary)}</td><td class="amount ${s.coreSurplus>=0?'positive':'negative'}">${fmtSEK.format(s.coreSurplus)}</td><td class="amount">${fmtPct(s.savingsRate)}</td><td class="amount ${i&&pctChange(s.coreOutflow,ySumm[i-1].coreOutflow)>0?'negative':'positive'}">${i?fmtPct(pctChange(s.coreOutflow,ySumm[i-1].coreOutflow)):'—'}</td></tr>`).join('')}</tbody></table></div></div>`;
+    ${prefEnabled('explore_widgets','annual_pnl')?`<div class="card"><div class="card-head"><div><div class="section-kicker">Long-term record</div><h2>Year-by-year household P&amp;L</h2></div></div><div class="table-wrap"><table><thead><tr><th>Year</th><th class="amount">Core income</th><th class="amount">Household spend</th><th class="amount">Financial cost</th><th class="amount">Extraordinary</th><th class="amount">Core surplus</th><th class="amount">Savings rate</th><th class="amount">Spend growth</th></tr></thead><tbody>${ySumm.map((s,i)=>`<tr><td><strong>${s.y}</strong></td><td class="amount">${fmtSEK.format(s.coreIncome)}</td><td class="amount">${fmtSEK.format(s.operating)}</td><td class="amount">${fmtSEK.format(s.financial)}</td><td class="amount">${fmtSEK.format(s.extraordinary)}</td><td class="amount ${s.coreSurplus>=0?'positive':'negative'}">${fmtSEK.format(s.coreSurplus)}</td><td class="amount">${fmtPct(s.savingsRate)}</td><td class="amount ${i&&pctChange(s.coreOutflow,ySumm[i-1].coreOutflow)>0?'negative':'positive'}">${i?fmtPct(pctChange(s.coreOutflow,ySumm[i-1].coreOutflow)):'—'}</td></tr>`).join('')}</tbody></table></div></div>`:''}`;
   document.querySelectorAll('[data-horizon]').forEach(b=>b.addEventListener('click',()=>{state.exploreHorizon=b.dataset.horizon;renderExplore();}));
   chart('spendTrajectoryChart',{type:'line',data:{labels:series.map(x=>monthLabel(x.month)),datasets:[{label:'Monthly core spend',data:spend,borderColor:'#94a3b8',backgroundColor:'rgba(148,163,184,.08)',borderWidth:1.4,pointRadius:1,tension:.15},{label:'3m average',data:roll3,borderColor:PALETTE[3],borderWidth:2.2,pointRadius:0,tension:.2},{label:'12m average',data:roll12,borderColor:PALETTE[0],borderWidth:3,pointRadius:0,tension:.2}]},options:{maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{position:'bottom'}},scales:{x:{grid:{display:false}},y:{ticks:{callback:v=>`${Math.round(v/1000)}k`},grid:{color:'#eef2f7'}}}}});
   chart('categoryStackChart',{type:'bar',data:{labels:series.map(x=>monthLabel(x.month)),datasets:stackData.map((d,i)=>({...d,backgroundColor:PALETTE[i%PALETTE.length],stack:'spend'}))},options:{maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{boxWidth:10}}},scales:{x:{stacked:true,grid:{display:false}},y:{stacked:true,ticks:{callback:v=>`${Math.round(v/1000)}k`},grid:{color:'#eef2f7'}}}}});
@@ -461,6 +503,25 @@ function renderExplore(){
   if(subs.length){const labels=['Spending',...cats.map(x=>x[0].replaceAll('_',' ')),...subs.map(([k])=>k.split('\u0000')[1])],ids=['root',...cats.map(x=>`m|${x[0]}`),...subs.map(([k])=>`s|${k}`)],parents=['',...cats.map(()=> 'root'),...subs.map(([k])=>`m|${k.split('\u0000')[0]}`)],values=[totalSpend,...cats.map(x=>x[1]),...subs.map(x=>x[1])];plot('exploreTreemap',[{type:'treemap',ids,labels,parents,values,branchvalues:'total',textinfo:'label+value+percent parent'}],{margin:{l:0,r:0,t:0,b:0}});}
   chart('merchantChart',{type:'bar',data:{labels:merchantTop.slice(0,10).map(x=>x[0].slice(0,24)),datasets:[{label:'Spend',data:merchantTop.slice(0,10).map(x=>x[1]),backgroundColor:PALETTE[0]}]},options:{maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{ticks:{callback:v=>`${Math.round(v/1000)}k`},grid:{color:'#eef2f7'}},y:{grid:{display:false}}}}});
   chart('dowChart',{type:'bar',data:{labels:['Mon','Tue','Wed','Thu','Fri','Sat','Sun'],datasets:[{data:dowOrdered,backgroundColor:PALETTE}]},options:{maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false}},y:{ticks:{callback:v=>`${Math.round(v/1000)}k`},grid:{color:'#eef2f7'}}}}});
+}
+
+
+function moduleToggleRow(item,group){const checked=prefEnabled(group,item.id);return `<label class="module-row"><span><strong>${esc(item.label)}</strong>${item.description?`<small>${esc(item.description)}</small>`:''}</span><input type="checkbox" data-pref-group="${group}" data-pref-id="${item.id}" ${checked?'checked':''}></label>`;}
+function renderSettings(){
+  els.settingsView.innerHTML=`
+    <div class="settings-intro card"><div><div class="section-kicker">Modular workspace</div><h2>Choose what you want to see</h2><p class="muted">These switches only change your workspace. They do not delete transactions, classifications, balance-sheet data or budgets.</p></div><div><button id="resetModules" class="secondary">Reset defaults</button> <button id="saveModules" class="primary">Save configuration</button></div></div>
+    <div class="settings-grid">
+      <div class="card"><div class="section-kicker">Navigation</div><h2>Capabilities</h2><div class="module-list">${FEATURE_CATALOG.map(x=>moduleToggleRow(x,'feature_flags')).join('')}</div></div>
+      <div class="card"><div class="section-kicker">Overview</div><h2>Dashboard widgets</h2><div class="module-list">${DASHBOARD_WIDGETS.map(x=>moduleToggleRow(x,'dashboard_widgets')).join('')}</div></div>
+      <div class="card"><div class="section-kicker">Explore</div><h2>Analytical widgets</h2><div class="module-list">${EXPLORE_WIDGETS.map(x=>moduleToggleRow(x,'explore_widgets')).join('')}</div></div>
+    </div>
+    <div class="info" style="margin-top:15px"><strong>Designed for iteration.</strong> Future capabilities can be added to the feature catalog and will automatically appear here as a switch. This keeps the core navigation stable while the analytical toolkit grows.</div>`;
+  $('saveModules')?.addEventListener('click',savePreferencesFromUI);$('resetModules')?.addEventListener('click',async()=>{state.preferences=defaultPreferences();await persistPreferences();renderSettings();applyFeatureVisibility();toast('Defaults restored');});
+}
+async function persistPreferences(){const payload={owner_id:state.user.id,feature_flags:state.preferences.feature_flags,dashboard_widgets:state.preferences.dashboard_widgets,explore_widgets:state.preferences.explore_widgets,updated_at:new Date().toISOString()};const {error}=await supabase.from('user_preferences').upsert(payload,{onConflict:'owner_id'});if(error)throw error;}
+async function savePreferencesFromUI(){
+  const prefs=defaultPreferences();document.querySelectorAll('[data-pref-group][data-pref-id]').forEach(i=>{prefs[i.dataset.prefGroup][i.dataset.prefId]=i.checked;});state.preferences=prefs;
+  try{await persistPreferences();applyFeatureVisibility();toast('Workspace configuration saved');}catch(e){toast(e.message||'Could not save settings');}
 }
 
 function transactionTable(rows,includeActions=true){
